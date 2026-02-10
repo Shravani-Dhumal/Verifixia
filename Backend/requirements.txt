@@ -1,0 +1,16 @@
+Flask==3.1.2
+Flask-CORS==6.0.2
+python-dotenv==1.2.1
+Pillow==12.1.0
+# Note: PyTorch and torchvision are large platform-specific packages and are
+# intentionally left commented out here to avoid long or failing installs.
+# Install PyTorch separately following the official instructions for your
+# platform. For many macOS/Linux CPU-only setups you can run:
+#   python3 -m pip install --upgrade pip
+#   python3 -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+# For GPUs or other platforms, follow: https://pytorch.org/get-started/locally/
+# transformers is optional but useful for some pipelines; install if needed:
+transformers
+
+# torch
+# torchvision
