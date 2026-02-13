@@ -217,8 +217,15 @@ def train_model(config):
         val_f1 = f1_score(val_labels, val_preds)
         val_loss = val_loss / len(val_loader)
 
-        print(".4f")
-        print(".4f")
+        print(
+            f"Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}"
+        )
+        print(
+            "Val Loss: "
+            f"{val_loss:.4f}, Val Acc: {val_accuracy:.4f}, "
+            f"Precision: {val_precision:.4f}, Recall: {val_recall:.4f}, "
+            f"F1: {val_f1:.4f}"
+        )
 
         # Save best model
         if val_accuracy > best_accuracy:
