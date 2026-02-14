@@ -1,12 +1,26 @@
-const API_BASE = "http://localhost:3001"; // Flask backend URL (port 3001)
+import { getAuthToken } from "./src/lib/auth";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+const USE_MOCK_API = String(import.meta.env.VITE_USE_MOCK_API || "false") === "true";
+
+async function buildAuthHeaders(base = {}) {
+  const token = await getAuthToken();
+  if (!token) return base;
+  return {
+    ...base,
+    Authorization: `Bearer ${token}`,
+  };
+}
 
 export async function uploadImage(file) {
   const formData = new FormData();
   formData.append("image", file);
 
   try {
+    const headers = await buildAuthHeaders();
     const res = await fetch(`${API_BASE}/api/upload`, {
       method: "POST",
+      headers,
       body: formData,
     });
 
@@ -26,15 +40,18 @@ export async function uploadImage(file) {
     // Return the complete response with all detailed information
     return data;
   } catch (error) {
-    console.warn("Upload to backend failed, falling back to mock response:", error);
-    // Fallback to mock behaviour so UI still works even if backend is down
-    return mockUploadResponse();
+    if (USE_MOCK_API) {
+      console.warn("Upload to backend failed, falling back to mock response:", error);
+      return mockUploadResponse();
+    }
+    throw error;
   }
 }
 
 export async function fetchModelInfo() {
   try {
-    const res = await fetch(`${API_BASE}/api/model-info`);
+    const headers = await buildAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/model-info`, { headers });
 
     let data;
     try {
@@ -59,9 +76,17 @@ export async function fetchModelInfo() {
   }
 }
 
-export async function fetchDetectionLogs() {
+export async function fetchDetectionLogs(params = {}) {
   try {
-    const res = await fetch(`${API_BASE}/api/logs`);
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      query.set(key, String(value));
+    });
+
+    const headers = await buildAuthHeaders();
+    const url = query.toString() ? `${API_BASE}/api/logs?${query.toString()}` : `${API_BASE}/api/logs`;
+    const res = await fetch(url, { headers });
 
     let data;
     try {
@@ -76,11 +101,69 @@ export async function fetchDetectionLogs() {
       throw new Error(data?.error || `Backend error: ${res.status}`);
     }
 
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        page: 1,
+        page_size: data.length,
+      };
+    }
     return data;
   } catch (error) {
-    console.warn("Fetching detection logs failed, falling back to mock logs:", error);
-    return mockLogsResponse();
+    if (USE_MOCK_API) {
+      console.warn("Fetching detection logs failed, falling back to mock logs:", error);
+      const items = mockLogsResponse();
+      return {
+        items,
+        total: items.length,
+        page: 1,
+        page_size: items.length,
+      };
+    }
+    throw error;
   }
+}
+
+export async function deleteDetectionLog(logId) {
+  const headers = await buildAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/logs/${encodeURIComponent(logId)}`, {
+    method: "DELETE",
+    headers,
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || `Backend error: ${res.status}`);
+  }
+  return data;
+}
+
+export async function clearDetectionLogs(sourceType = "") {
+  const headers = await buildAuthHeaders();
+  const query = sourceType ? `?source_type=${encodeURIComponent(sourceType)}` : "";
+  const res = await fetch(`${API_BASE}/api/logs${query}`, {
+    method: "DELETE",
+    headers,
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || `Backend error: ${res.status}`);
+  }
+  return data;
+}
+
+export async function logLiveEvent(payload) {
+  const headers = await buildAuthHeaders({ "Content-Type": "application/json" });
+  const res = await fetch(`${API_BASE}/api/live-events`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || `Backend error: ${res.status}`);
+  }
+  return data;
 }
 
 function mockUploadResponse() {

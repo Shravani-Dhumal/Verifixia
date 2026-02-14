@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Moon,
   Sun,
@@ -23,14 +23,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { useTheme } from "next-themes";
 
 export const Settings = () => {
-  const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [sensitivity, setSensitivity] = useState(65);
   const [autoArchive, setAutoArchive] = useState(true);
   const [threatAlerts, setThreatAlerts] = useState(true);
   const [summaryEmails, setSummaryEmails] = useState(false);
   const [retentionDays, setRetentionDays] = useState("30");
+  const activeTheme = useMemo(() => {
+    if (theme === "system") return "system";
+    if (theme === "light" || theme === "dark") return theme;
+    return resolvedTheme === "light" ? "light" : "dark";
+  }, [theme, resolvedTheme]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -55,7 +61,7 @@ export const Settings = () => {
             <Label>Theme Mode</Label>
             <div className="grid grid-cols-3 gap-3">
               <Button
-                variant={theme === "light" ? "default" : "outline"}
+                variant={activeTheme === "light" ? "default" : "outline"}
                 className="w-full"
                 onClick={() => setTheme("light")}
               >
@@ -63,7 +69,7 @@ export const Settings = () => {
                 Light
               </Button>
               <Button
-                variant={theme === "dark" ? "default" : "outline"}
+                variant={activeTheme === "dark" ? "default" : "outline"}
                 className="w-full"
                 onClick={() => setTheme("dark")}
               >
@@ -71,7 +77,7 @@ export const Settings = () => {
                 Dark
               </Button>
               <Button
-                variant={theme === "system" ? "default" : "outline"}
+                variant={activeTheme === "system" ? "default" : "outline"}
                 className="w-full"
                 onClick={() => setTheme("system")}
               >
@@ -244,7 +250,7 @@ export const Settings = () => {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-secondary/20">
             <div>
-              <p className="font-medium">DeepGuard AI Engine</p>
+              <p className="font-medium">Verifixia AI Engine</p>
               <p className="text-sm text-muted-foreground">Version 2.4.1</p>
             </div>
             <Badge variant="secondary" className="bg-success/20 text-success">

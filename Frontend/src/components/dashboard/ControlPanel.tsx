@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { Play, Square, Settings, Upload } from "lucide-react";
+import { Play, Square, Settings, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,8 @@ interface ControlPanelProps {
   onStartStop: () => void;
   onSensitivityChange: (value: number) => void;
   onUploadMedia: (file: File) => Promise<void> | void;
+  hasUploadedMedia?: boolean;
+  onClearMedia?: () => void;
 }
 
 export const ControlPanel = ({
@@ -18,6 +20,8 @@ export const ControlPanel = ({
   onStartStop,
   onSensitivityChange,
   onUploadMedia,
+  hasUploadedMedia = false,
+  onClearMedia,
 }: ControlPanelProps) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -102,6 +106,21 @@ export const ControlPanel = ({
             onChange={handleFileChange}
           />
         </div>
+
+        {hasUploadedMedia && (
+          <div>
+            <Button
+              type="button"
+              variant="destructive"
+              className="w-full font-medium text-sm justify-center"
+              onClick={onClearMedia}
+              disabled={isUploading}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Remove Current Media
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Sensitivity Slider */}

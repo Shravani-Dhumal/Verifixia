@@ -12,6 +12,93 @@ interface VideoFeedProps {
 export const VideoFeed = ({ isMonitoring, threatLevel, mediaSrc, mediaType }: VideoFeedProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const isLocalhost = () => {
+    if (typeof window === "undefined") return false;
+    const host = window.location.hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  };
+
+  const isCameraContextSecure = () => {
+    if (typeof window === "undefined") return false;
+    return window.isSecureContext || isLocalhost();
+  };
+
+  const getLocalhostRedirectUrl = () => {
+    if (typeof window === "undefined") return null;
+    const { hostname, port, pathname, search, hash } = window.location;
+
+    const isLikelyLocalDevHost =
+      hostname === "0.0.0.0" ||
+      hostname === "[::]" ||
+      hostname === "::" ||
+      hostname.endsWith(".local") ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+    if (!isLikelyLocalDevHost || hostname === "localhost") {
+      return null;
+    }
+
+    return `http://localhost${port ? `:${port}` : ""}${pathname}${search}${hash}`;
+  };
+
+  const getUserMediaCompat = (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+    if (typeof navigator === "undefined") {
+      return Promise.reject(new Error("Navigator is not available in this environment."));
+    }
+
+    if (navigator.mediaDevices?.getUserMedia) {
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    const legacyGetUserMedia =
+      (navigator as Navigator & {
+        webkitGetUserMedia?: (
+          constraints: MediaStreamConstraints,
+          successCallback: (stream: MediaStream) => void,
+          errorCallback: (err: unknown) => void
+        ) => void;
+        mozGetUserMedia?: (
+          constraints: MediaStreamConstraints,
+          successCallback: (stream: MediaStream) => void,
+          errorCallback: (err: unknown) => void
+        ) => void;
+      }).webkitGetUserMedia ||
+      (navigator as Navigator & {
+        mozGetUserMedia?: (
+          constraints: MediaStreamConstraints,
+          successCallback: (stream: MediaStream) => void,
+          errorCallback: (err: unknown) => void
+        ) => void;
+      }).mozGetUserMedia;
+
+    if (!legacyGetUserMedia) {
+      return Promise.reject(new Error("This browser does not support camera access (getUserMedia)."));
+    }
+
+    return new Promise((resolve, reject) => legacyGetUserMedia.call(navigator, constraints, resolve, reject));
+  };
+
+  const buildCameraErrorMessage = (err: unknown) => {
+    if (err && typeof err === "object" && "name" in err) {
+      const name = String((err as { name?: string }).name || "");
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        return "Camera permission was denied. Allow camera access in your browser site settings and reload.";
+      }
+      if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        return "No camera device was found. Connect a camera and try again.";
+      }
+      if (name === "NotReadableError" || name === "TrackStartError") {
+        return "Camera is already in use by another app. Close other apps using the camera and retry.";
+      }
+    }
+
+    return (err && (err as Error).message) || "Unable to access camera";
+  };
+
   const getThreatColor = () => {
     switch (threatLevel) {
       case "danger":
@@ -30,21 +117,25 @@ export const VideoFeed = ({ isMonitoring, threatLevel, mediaSrc, mediaType }: Vi
 
     const startCamera = async () => {
       if (!isMonitoring) return;
-      if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError("Camera unavailable: navigator.mediaDevices.getUserMedia is not supported or page is not in a secure context (HTTPS).");
+      if (!isCameraContextSecure()) {
+        const redirectUrl = getLocalhostRedirectUrl();
+        if (redirectUrl) {
+          window.location.replace(redirectUrl);
+          return;
+        }
+        setCameraError("Camera requires a secure context. Use HTTPS, or open this app on http://localhost.");
         return;
       }
 
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        stream = await getUserMediaCompat({ video: { facingMode: "user" }, audio: false });
         if (videoEl) {
           videoEl.srcObject = stream;
           await videoEl.play().catch(() => {});
         }
         setCameraError(null);
       } catch (err) {
-        const msg = (err && (err as Error).message) || String(err);
-        setCameraError(msg || "Unable to access camera");
+        setCameraError(buildCameraErrorMessage(err));
       }
     };
 
@@ -67,9 +158,7 @@ export const VideoFeed = ({ isMonitoring, threatLevel, mediaSrc, mediaType }: Vi
         videoEl.srcObject = null;
       }
     };
-    // We intentionally do not include mediaSrc in deps to keep camera start logic controlled by parent display
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMonitoring]);
+  }, [isMonitoring, mediaSrc]);
 
   return (
     <div className={`glass-card relative overflow-hidden aspect-video ${getThreatColor()} border-2 transition-all duration-500`}>

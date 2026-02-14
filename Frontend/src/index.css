@@ -6,6 +6,69 @@
 
 @layer base {
   :root {
+    /* Light Theme */
+    --background: 210 33% 98%;
+    --foreground: 222 47% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 10%;
+
+    --primary: 190 90% 42%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 15%;
+
+    --muted: 210 32% 94%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 190 85% 45%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 210 40% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 210 40% 98%;
+
+    --border: 214 28% 86%;
+    --input: 214 28% 92%;
+    --ring: 190 90% 42%;
+
+    --radius: 0.75rem;
+
+    /* Custom cyber colors */
+    --cyber-cyan: 187 96% 42%;
+    --cyber-cyan-glow: 187 100% 50%;
+    --cyber-red: 0 84% 60%;
+    --cyber-red-glow: 0 100% 65%;
+    --cyber-green: 142 76% 36%;
+    --cyber-slate: 210 28% 96%;
+    --cyber-slate-light: 210 25% 92%;
+
+    /* Glassmorphism */
+    --glass-bg: 210 33% 99% / 0.82;
+    --glass-border: 190 90% 42% / 0.2;
+    --glass-border-hover: 190 90% 42% / 0.35;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 10%;
+    --sidebar-primary: 190 90% 42%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 15%;
+    --sidebar-border: 214 28% 86%;
+    --sidebar-ring: 190 90% 42%;
+  }
+
+  .dark {
     /* Command Center Dark Theme */
     --background: 222 47% 6%;
     --foreground: 210 40% 96%;
@@ -41,9 +104,6 @@
     --input: 217 33% 17%;
     --ring: 187 96% 42%;
 
-    --radius: 0.75rem;
-
-    /* Custom cyber colors */
     --cyber-cyan: 187 96% 42%;
     --cyber-cyan-glow: 187 100% 50%;
     --cyber-red: 0 84% 60%;
@@ -52,12 +112,10 @@
     --cyber-slate: 222 47% 11%;
     --cyber-slate-light: 217 33% 17%;
 
-    /* Glassmorphism */
     --glass-bg: 222 47% 11% / 0.6;
     --glass-border: 187 96% 42% / 0.2;
     --glass-border-hover: 187 96% 42% / 0.4;
 
-    /* Sidebar */
     --sidebar-background: 222 47% 8%;
     --sidebar-foreground: 210 40% 96%;
     --sidebar-primary: 187 96% 42%;

@@ -32,9 +32,9 @@ const faqs = [
       "We support all major video formats including MP4, AVI, MOV, WebM, and MKV. Live streaming analysis supports RTMP, HLS, and WebRTC protocols.",
   },
   {
-    question: "How do I integrate DeepGuard with my existing systems?",
+    question: "How do I integrate Verifixia AI with my existing systems?",
     answer:
-      "DeepGuard provides RESTful APIs for easy integration. Visit your Profile > API Keys section to generate authentication tokens. Our documentation includes SDKs for Python, JavaScript, and Go.",
+      "Verifixia AI provides RESTful APIs for easy integration. Visit your Profile > API Keys section to generate authentication tokens. Our documentation includes SDKs for Python, JavaScript, and Go.",
   },
   {
     question: "What happens when a deepfake is detected?",
@@ -51,7 +51,7 @@ const faqs = [
 const resources = [
   {
     title: "Getting Started Guide",
-    description: "Learn the basics of DeepGuard AI",
+    description: "Learn the basics of Verifixia AI",
     icon: Book,
     type: "Documentation",
   },

@@ -139,7 +139,7 @@ export const AnalysisSummary = ({
         {/* Default Description */}
         {!analysis?.description && (
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Upload any face image or short clip. DeepGuard estimates the likelihood of{" "}
+            Upload any face image or short clip. Verifixia AI estimates the likelihood of{" "}
             <span className="font-semibold text-primary/90">synthetic manipulation</span> and feeds
             results into your forensic logs.
           </p>

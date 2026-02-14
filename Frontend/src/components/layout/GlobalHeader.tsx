@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
+import { getCurrentUser, logoutUser } from "@/lib/auth";
+import { toast } from "sonner";
 
 interface GlobalHeaderProps {
   onOpenNotifications: () => void;
@@ -21,6 +23,9 @@ interface GlobalHeaderProps {
 export const GlobalHeader = ({ onOpenNotifications, notificationCount = 3 }: GlobalHeaderProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
+  const user = getCurrentUser();
+  const userName = user?.displayName || user?.email?.split("@")[0] || "User";
+  const userRole = user?.email ? "Authenticated User" : "Guest";
 
   return (
     <header className="glass-card px-6 py-3 flex items-center justify-between border-b border-border/50">
@@ -61,8 +66,8 @@ export const GlobalHeader = ({ onOpenNotifications, notificationCount = 3 }: Glo
                 <User className="w-4 h-4 text-primary" />
               </div>
               <div className="hidden md:block text-left">
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-muted-foreground">Security Admin</p>
+                <p className="text-sm font-medium">{userName}</p>
+                <p className="text-xs text-muted-foreground">{userRole}</p>
               </div>
               <ChevronDown className="w-4 h-4 text-muted-foreground hidden md:block" />
             </Button>
@@ -85,7 +90,11 @@ export const GlobalHeader = ({ onOpenNotifications, notificationCount = 3 }: Glo
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               className="text-destructive focus:text-destructive"
-              onClick={() => navigate("/login")}
+              onClick={async () => {
+                await logoutUser();
+                toast.success("Logged out");
+                navigate("/login");
+              }}
             >
               <LogOut className="w-4 h-4 mr-2" />
               Log Out

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Clock, Gauge, ScanFace } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,7 +10,7 @@ import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ControlPanel } from "@/components/dashboard/ControlPanel";
 import { AnalysisSummary } from "@/components/dashboard/AnalysisSummary";
 import { ModelInfo } from "@/components/dashboard/ModelInfo";
-import { uploadImage } from "../../api";
+import { uploadImage, fetchDetectionLogs, logLiveEvent } from "../../api";
 
 const MOCK_LOG_MESSAGES = [
   { message: "Biometric Mismatch Detected", type: "error" as const },
@@ -44,6 +44,11 @@ export const Dashboard = () => {
   const [lastAnalysis, setLastAnalysis] = useState<any>(undefined);
   const [lastModelInfo, setLastModelInfo] = useState<any>(undefined);
   const [lastProcessingTime, setLastProcessingTime] = useState<any>(undefined);
+  const [mediaSrc, setMediaSrc] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
+  const [currentObjectUrl, setCurrentObjectUrl] = useState<string | null>(null);
+  const [liveSessionId, setLiveSessionId] = useState<string>(() => crypto.randomUUID());
+  const previousThreatLevel = useRef<"safe" | "warning" | "danger">("safe");
 
   const addLogEntry = useCallback((entry: Omit<LogEntry, "id" | "timestamp">) => {
     const now = new Date();
@@ -63,9 +68,81 @@ export const Dashboard = () => {
     setLogs((prev) => [newEntry, ...prev].slice(0, 50));
   }, []);
 
+  const clearCurrentObjectUrl = useCallback(() => {
+    if (!currentObjectUrl) return;
+    URL.revokeObjectURL(currentObjectUrl);
+    setCurrentObjectUrl(null);
+  }, [currentObjectUrl]);
+
+  const clearUploadedMedia = useCallback(() => {
+    clearCurrentObjectUrl();
+    setMediaSrc(null);
+    setMediaType(null);
+    setLastFilename(undefined);
+    setLastIsVideo(undefined);
+    setLastThreatLevel(undefined);
+    setLastPrediction("Unknown");
+    setLastConfidence(null);
+    setLastModelUsed(undefined);
+    setLastAnalysis(undefined);
+    setLastModelInfo(undefined);
+    setLastProcessingTime(undefined);
+  }, [clearCurrentObjectUrl]);
+
+  const hydratePersistedLogs = useCallback(async () => {
+    try {
+      const data = await fetchDetectionLogs();
+      const serverLogs = Array.isArray(data?.items) ? data.items : [];
+      const mappedLogs: LogEntry[] = serverLogs
+        .slice()
+        .reverse()
+        .map((log: any) => {
+          const parsedTs = new Date(log.timestamp);
+          const timestamp = Number.isNaN(parsedTs.getTime())
+            ? String(log.timestamp ?? "")
+            : parsedTs.toLocaleTimeString("en-US", {
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              });
+
+          const prediction = String(log.prediction || "Unknown");
+          const message = `${log.filename || "Uploaded media"}: ${prediction}`;
+          const type: LogEntry["type"] =
+            prediction.toLowerCase() === "fake"
+              ? "error"
+              : prediction.toLowerCase() === "real"
+              ? "success"
+              : "info";
+
+          return {
+            id: crypto.randomUUID(),
+            timestamp,
+            message,
+            type,
+          };
+        });
+
+      setLogs((prev) => {
+        const combined = [...prev, ...mappedLogs];
+        const seen = new Set<string>();
+        const deduped = combined.filter((entry) => {
+          const key = `${entry.timestamp}|${entry.message}|${entry.type}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        return deduped.slice(0, 50);
+      });
+    } catch (error) {
+      console.warn("Could not fetch persisted detection logs", error);
+    }
+  }, []);
+
   // Simulate monitoring activity
   useEffect(() => {
-    if (!isMonitoring) {
+    if (!isMonitoring || !!mediaSrc) {
       setThreatLevel("safe");
       return;
     }
@@ -113,7 +190,7 @@ export const Dashboard = () => {
       clearInterval(logInterval);
       clearInterval(metricInterval);
     };
-  }, [isMonitoring, sensitivity, addLogEntry]);
+  }, [isMonitoring, sensitivity, addLogEntry, mediaSrc]);
 
   // Trigger alert toast when deepfake detected
   useEffect(() => {
@@ -126,15 +203,50 @@ export const Dashboard = () => {
     }
   }, [threatLevel, isMonitoring]);
 
+  useEffect(() => {
+    hydratePersistedLogs();
+  }, [hydratePersistedLogs]);
+
+  useEffect(() => {
+    return () => {
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+    };
+  }, [currentObjectUrl]);
+
   const handleStartStop = () => {
     setIsMonitoring(!isMonitoring);
     if (!isMonitoring) {
+      const nextSessionId = crypto.randomUUID();
+      setLiveSessionId(nextSessionId);
+      if (mediaSrc) {
+        clearUploadedMedia();
+        addLogEntry({ message: "Uploaded media removed. Switched to live monitoring feed.", type: "info" });
+      }
       addLogEntry({ message: "Monitoring session started", type: "info" });
+      logLiveEvent({
+        session_id: nextSessionId,
+        source: "Live Monitoring",
+        event_name: "monitoring_started",
+        prediction: "Unknown",
+        threat_level: "low",
+        latency_ms: latency,
+      }).catch((err) => console.warn("Failed to persist live start event", err));
       toast.success("Monitoring Started", {
         description: "Verifixia is now analyzing the video feed.",
       });
     } else {
       addLogEntry({ message: "Monitoring session ended", type: "info" });
+      logLiveEvent({
+        session_id: liveSessionId,
+        source: "Live Monitoring",
+        event_name: "monitoring_stopped",
+        prediction: lastPrediction,
+        threat_level: threatLevel,
+        confidence: lastConfidence ?? 0,
+        latency_ms: latency,
+      }).catch((err) => console.warn("Failed to persist live stop event", err));
       setConfidenceScore(0);
       toast.info("Monitoring Stopped", {
         description: "Video analysis has been paused.",
@@ -143,6 +255,10 @@ export const Dashboard = () => {
   };
 
   const handleUploadMedia = async (file: File) => {
+    if (mediaSrc) {
+      clearUploadedMedia();
+    }
+
     addLogEntry({
       message: `Upload received: "${file.name}". Running deepfake analysis...`,
       type: "info",
@@ -174,6 +290,17 @@ export const Dashboard = () => {
       setLastModelInfo(result?.model_info);
       setLastProcessingTime(result?.processing_time);
 
+      if (result?.file_url) {
+        clearCurrentObjectUrl();
+        setMediaSrc(result.file_url);
+        setMediaType(result.isVideo ? "video" : "image");
+      } else {
+        const localUrl = URL.createObjectURL(file);
+        setCurrentObjectUrl(localUrl);
+        setMediaSrc(localUrl);
+        setMediaType(result?.isVideo ? "video" : "image");
+      }
+
       // Add detailed log entry
       const logMessage = result?.model_used 
         ? `Analysis complete using ${result.model_used}: ${prediction} (${Math.round(rawConfidence || 0)}%)`
@@ -194,6 +321,9 @@ export const Dashboard = () => {
       toast.success(`Media analysis complete (${prediction})`, {
         description: toastDescription,
       });
+
+      // Pull persisted logs so upload history survives refresh and appears in forensic views.
+      hydratePersistedLogs();
     } catch (error) {
       console.error("Upload failed", error);
       addLogEntry({
@@ -206,13 +336,39 @@ export const Dashboard = () => {
     }
   };
 
+  useEffect(() => {
+    const threatRaised = previousThreatLevel.current !== "danger" && threatLevel === "danger";
+    previousThreatLevel.current = threatLevel;
+    if (!isMonitoring || !threatRaised) return;
+
+    logLiveEvent({
+      session_id: liveSessionId,
+      source: "Live Monitoring",
+      event_name: "deepfake_alert",
+      prediction: "Fake",
+      threat_level: "high",
+      confidence: confidenceScore,
+      latency_ms: latency,
+      message: "High probability synthetic manipulation detected in live feed.",
+    }).catch((err) => console.warn("Failed to persist live alert event", err));
+  }, [threatLevel, isMonitoring, liveSessionId, confidenceScore, latency]);
+
+  const handleClearMedia = () => {
+    if (!mediaSrc) return;
+    clearUploadedMedia();
+    addLogEntry({ message: "Uploaded media removed by user.", type: "info" });
+    toast.info("Media removed", {
+      description: "You can upload another file or continue with live monitoring.",
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto space-y-4 md:space-y-6">
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Left Column - Video Feed & Gauge */}
         <div className="lg:col-span-2 space-y-4 md:space-y-6">
-          <VideoFeed isMonitoring={isMonitoring} threatLevel={threatLevel} />
+          <VideoFeed isMonitoring={isMonitoring} threatLevel={threatLevel} mediaSrc={mediaSrc} mediaType={mediaType} />
           <ConfidenceGauge value={confidenceScore} isMonitoring={isMonitoring} />
         </div>
 
@@ -225,6 +381,8 @@ export const Dashboard = () => {
             onStartStop={handleStartStop}
             onSensitivityChange={setSensitivity}
             onUploadMedia={handleUploadMedia}
+            hasUploadedMedia={Boolean(mediaSrc)}
+            onClearMedia={handleClearMedia}
           />
           <ModelInfo
             modelData={lastModelInfo}

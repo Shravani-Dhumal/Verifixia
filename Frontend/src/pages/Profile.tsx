@@ -179,7 +179,7 @@ export const Profile = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" defaultValue="john.doe@deepguard.ai" />
+                <Input id="email" type="email" defaultValue="john.doe@verifixia.ai" />
               </div>
 
               <div className="space-y-2">
