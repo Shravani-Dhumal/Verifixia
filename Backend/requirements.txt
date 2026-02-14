@@ -11,6 +11,7 @@ Pillow==12.1.0
 # For GPUs or other platforms, follow: https://pytorch.org/get-started/locally/
 # transformers is optional but useful for some pipelines; install if needed:
 transformers
+firebase-admin==7.1.0
 
 # torch
 # torchvision

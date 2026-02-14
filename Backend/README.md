@@ -1,4 +1,4 @@
-# DeepGaurd Backend API
+# Verifixia AI Backend API
 
 A Flask-based REST API for deepfake detection using PyTorch models.
 

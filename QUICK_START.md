@@ -1,9 +1,9 @@
-# DeepGaurd: Backend & Frontend Fully Connected ✅
+# Verifixia AI: Backend & Frontend Fully Connected ✅
 
 ## 🎯 Status: EVERYTHING WORKING!
 
 ### Frontend 🖥️
-- **URL:** http://localhost:8080
+- **URL:** http://localhost:8085
 - **Status:** ✅ Running  
 - **Tech:** React + Vite + TypeScript
 - **Command:** `cd Frontend && npm run dev`
@@ -33,14 +33,14 @@
 
 **Terminal 1 - Frontend:**
 ```bash
-cd /Users/apple/Documents/Project/DeepGaurd/Frontend
+cd /Users/apple/Documents/Project/Verifixia/Frontend
 npm run dev
 ```
-Access at: http://localhost:8080
+Access at: http://localhost:8085
 
 **Terminal 2 - Backend:**
 ```bash
-python3 /Users/apple/Documents/Project/DeepGaurd/Backend/app.py
+python3 /Users/apple/Documents/Project/Verifixia/Backend/app.py
 ```
 Access at: http://localhost:3001
 
@@ -82,8 +82,8 @@ Access at: http://localhost:3001
 ## 📝 Project Structure
 
 ```
-/Users/apple/Documents/Project/DeepGaurd/
-├── Frontend/                 # React + Vite app (port 8080)
+/Users/apple/Documents/Project/Verifixia/
+├── Frontend/                 # React + Vite app (port 8085)
 │   ├── src/
 │   ├── api.js               # ← Backend endpoint configured
 │   └── package.json
@@ -100,4 +100,4 @@ Access at: http://localhost:3001
 
 Everything is connected and ready to use! Try uploading an image in the frontend and you'll see it being processed by the backend.
 
-**Enjoy using DeepGaurd! 🎉**
+**Enjoy using Verifixia AI! 🎉**

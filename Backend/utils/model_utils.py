@@ -138,7 +138,7 @@ class ModelUtils:
     def get_model_info(model_path: str) -> Dict[str, Any]:
         """Get comprehensive information about the model"""
         info = {
-            "model_name": "DeepGuard Xception",
+            "model_name": "Verifixia AI Xception",
             "version": "2.4.1",
             "architecture": "Xception-based CNN",
             "input_size": "299x299",

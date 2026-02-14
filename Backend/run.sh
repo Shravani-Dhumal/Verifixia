@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# DeepGaurd Backend Runner Script
+# Verifixia AI Backend Runner Script
 
-echo "🚀 Starting DeepGaurd Backend..."
+echo "🚀 Starting Verifixia AI Backend..."
 
 # Check if Python is available
 if ! command -v python3 &> /dev/null; then

@@ -16,7 +16,7 @@
 
 ## 🔗 Frontend Integration: CONNECTED ✓
 
-**Frontend:** `http://localhost:8080`
+**Frontend:** `http://localhost:8085`
 - ✅ Updated `api.js` to use `http://localhost:3001` 
 - ✅ Real API calls enabled (mock mode disabled)
 - ✅ Ready to send requests to backend
@@ -61,7 +61,7 @@ curl http://localhost:3001/
 - `FLASK_ENV=development`
 - `FLASK_DEBUG=True`
 - `MODEL_PATH=../models/xception_deepfake.pth`
-- `CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080`
+- `CORS_ORIGINS=http://localhost:8085,http://127.0.0.1:8085`
 - `MAX_CONTENT_LENGTH=16777216` (16MB)
 
 ### Frontend (api.js)
@@ -86,17 +86,17 @@ const API_BASE = "http://localhost:3001";
 
 ### Start Backend:
 ```bash
-python3 /Users/apple/Documents/Project/DeepGaurd/Backend/app.py
+python3 /Users/apple/Documents/Project/Verifixia/Backend/app.py
 ```
 
 ### Start Frontend:
 ```bash
-cd /Users/apple/Documents/Project/DeepGaurd/Frontend
+cd /Users/apple/Documents/Project/Verifixia/Frontend
 npm run dev
 ```
 
 ### Access the Application:
-- Frontend: http://localhost:8080
+- Frontend: http://localhost:8085
 - Backend: http://localhost:3001
 - API Docs: http://localhost:3001/
 

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from PIL import Image, ImageStat
 import random
 import time
+from firebase_service import FirebaseService
 
 # Load environment variables
 load_dotenv()
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Allow both Vite dev (5173) and legacy dev (8080) by default.
-default_cors_origins = "http://localhost:5173,http://localhost:8080"
+# Allow both Vite dev (5173) and legacy dev (8085) by default.
+default_cors_origins = "http://localhost:5173,http://localhost:8085"
 CORS(app, origins=os.getenv("CORS_ORIGINS", default_cors_origins).split(","))
 
 # Configuration
@@ -34,6 +35,10 @@ app.config["ALLOWED_EXTENSIONS"] = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+LOG_FILE = os.path.join(os.path.dirname(__file__), "detection_logs.jsonl")
+
+# Firebase integration (optional; configured via environment variables)
+firebase_service = FirebaseService()
 
 # Model configuration
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "xception_deepfake.pth")
@@ -109,7 +114,7 @@ def predict_deepfake(image_path):
                 "confidence": prediction_result["confidence"],
                 "confidence_raw": prediction_result["confidence_raw"],
                 "threat_level": prediction_result["threat_level"],
-                "model_used": "DeepGuard Xception v2.4.1",
+                "model_used": "Verifixia AI Xception v2.4.1",
                 "processing_time": {
                     "preprocessing_ms": round(preprocessing_time * 1000, 2),
                     "inference_ms": prediction_result["inference_time_ms"],
@@ -210,29 +215,182 @@ def predict_deepfake(image_path):
             }
         }
 
-def save_detection_log(filename, result):
-    """Save detection result to log file with detailed information"""
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "filename": filename,
-        "prediction": result.get("prediction"),
-        "confidence": result.get("confidence"),
-        "threat_level": result.get("threat_level"),
-        "model_used": result.get("model_used"),
-        "processing_time_ms": result.get("processing_time", {}).get("total_ms", 0)
-    }
+def get_current_user():
+    """Resolve authenticated Firebase user from Authorization header."""
+    auth_header = request.headers.get("Authorization")
+    return firebase_service.verify_bearer_token(auth_header)
 
-    log_file = "detection_logs.jsonl"
-    with open(log_file, "a") as f:
+
+def _parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _read_local_logs():
+    logs = []
+    changed = False
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                entry = json.loads(line.strip())
+                if not entry.get("id"):
+                    entry["id"] = str(uuid.uuid4())
+                    changed = True
+                logs.append(entry)
+    if changed:
+        _write_local_logs(logs)
+    return logs
+
+
+def _write_local_logs(logs):
+    with open(LOG_FILE, "w") as f:
+        for entry in logs:
+            f.write(json.dumps(entry) + "\n")
+
+
+def _append_local_log(log_entry):
+    with open(LOG_FILE, "a") as f:
         f.write(json.dumps(log_entry) + "\n")
+
+
+def save_forensic_log(log_entry, user=None):
+    entry = dict(log_entry)
+    entry.setdefault("id", str(uuid.uuid4()))
+    entry.setdefault("timestamp", datetime.utcnow().isoformat())
+    if user and user.get("uid"):
+        entry["user_id"] = user.get("uid")
+        entry["user_email"] = user.get("email")
+
+    if firebase_service.enabled:
+        try:
+            saved = firebase_service.save_forensic_log(entry, user)
+            if saved:
+                entry = saved
+        except Exception as e:
+            logger.warning(f"Failed to save log in Firebase, falling back to local file: {e}")
+
+    _append_local_log(entry)
+    return entry
+
+
+def _filter_local_logs(logs, user=None, source_type=None, start_date=None, end_date=None):
+    output = logs
+    if user and user.get("uid"):
+        output = [entry for entry in output if entry.get("user_id") == user.get("uid")]
+    if source_type:
+        output = [entry for entry in output if entry.get("source_type") == source_type]
+
+    start_dt = _parse_iso_date(start_date)
+    end_dt = _parse_iso_date(end_date)
+    if start_dt or end_dt:
+        filtered = []
+        for entry in output:
+            ts = _parse_iso_date(entry.get("timestamp"))
+            if not ts:
+                continue
+            if start_dt and ts < start_dt:
+                continue
+            if end_dt and ts > end_dt:
+                continue
+            filtered.append(entry)
+        output = filtered
+
+    output.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return output
+
+
+def get_forensic_logs_response(user=None, page=1, page_size=50, start_date=None, end_date=None, source_type=None):
+    page = max(1, int(page))
+    page_size = max(1, min(100, int(page_size)))
+
+    if firebase_service.enabled:
+        try:
+            firebase_payload = firebase_service.get_forensic_logs(
+                page=page,
+                page_size=page_size,
+                start_date=start_date,
+                end_date=end_date,
+                source_type=source_type,
+                user=user,
+            )
+            if firebase_payload.get("items"):
+                return firebase_payload
+        except Exception as e:
+            logger.warning(f"Error retrieving Firebase logs, falling back to local logs: {e}")
+
+    logs = _read_local_logs()
+    filtered = _filter_local_logs(
+        logs,
+        user=user,
+        source_type=source_type,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    total = len(filtered)
+    start_idx = (page - 1) * page_size
+    items = filtered[start_idx:start_idx + page_size]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+def delete_forensic_log(log_id, user=None):
+    deleted = False
+    if firebase_service.enabled:
+        try:
+            deleted = firebase_service.delete_forensic_log(log_id, user=user) or deleted
+        except Exception as e:
+            logger.warning(f"Failed deleting Firebase log {log_id}: {e}")
+
+    logs = _read_local_logs()
+    remaining = []
+    for entry in logs:
+        if entry.get("id") != log_id:
+            remaining.append(entry)
+            continue
+        if user and user.get("uid") and entry.get("user_id") != user.get("uid"):
+            remaining.append(entry)
+            continue
+        deleted = True
+    if len(remaining) != len(logs):
+        _write_local_logs(remaining)
+    return deleted
+
+
+def clear_forensic_logs(user=None, source_type=None):
+    deleted_count = 0
+    if firebase_service.enabled:
+        try:
+            deleted_count += firebase_service.clear_forensic_logs(user=user, source_type=source_type)
+        except Exception as e:
+            logger.warning(f"Failed clearing Firebase logs: {e}")
+
+    logs = _read_local_logs()
+    remaining = []
+    for entry in logs:
+        if user and user.get("uid") and entry.get("user_id") != user.get("uid"):
+            remaining.append(entry)
+            continue
+        if source_type and entry.get("source_type") != source_type:
+            remaining.append(entry)
+            continue
+        deleted_count += 1
+    if len(remaining) != len(logs):
+        _write_local_logs(remaining)
+    return deleted_count
 
 @app.route("/api/upload", methods=["POST"])
 def upload_image():
     """Handle image or video upload and deepfake detection with detailed information"""
-    if "image" not in request.files:
+    upload_field = "image" if "image" in request.files else "file" if "file" in request.files else None
+    if not upload_field:
         return jsonify({"error": "No image file provided"}), 400
 
-    file = request.files["image"]
+    file = request.files[upload_field]
     if file.filename == "":
         return jsonify({"error": "No image selected"}), 400
 
@@ -245,6 +403,10 @@ def upload_image():
         ), 400
 
     try:
+        user = get_current_user()
+        if user:
+            firebase_service.upsert_user_profile(user)
+
         # Generate unique filename
         filename = secure_filename(file.filename)
         unique_filename = f"{uuid.uuid4()}_{filename}"
@@ -282,8 +444,22 @@ def upload_image():
         else:
             result = predict_deepfake(filepath)
 
-        # Save to log
-        save_detection_log(unique_filename, result)
+        session_id = request.form.get("session_id") or str(uuid.uuid4())
+        processing_time = result.get("processing_time", {}) or {}
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "filename": unique_filename,
+            "prediction": result.get("prediction"),
+            "confidence": result.get("confidence"),
+            "threat_level": result.get("threat_level"),
+            "model_used": result.get("model_used"),
+            "model_version": str(result.get("model_used", "")).replace("Verifixia AI ", ""),
+            "processing_time_ms": processing_time.get("total_ms", 0),
+            "latency_ms": processing_time.get("total_ms", 0),
+            "session_id": session_id,
+            "source_type": "upload",
+        }
+        saved_log = save_forensic_log(log_entry, user)
 
         # Clean up uploaded file (optional - you might want to keep for forensic analysis)
         # os.remove(filepath)
@@ -299,7 +475,10 @@ def upload_image():
             "model_used": result.get("model_used"),
             "processing_time": result.get("processing_time"),
             "analysis": result.get("analysis"),
-            "model_info": result.get("model_info")
+            "model_info": result.get("model_info"),
+            "user_id": user.get("uid") if user else None,
+            "session_id": session_id,
+            "log_id": saved_log.get("id"),
         }
 
         return jsonify(response)
@@ -308,24 +487,86 @@ def upload_image():
         logger.error(f"Error processing upload: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-@app.route('/api/logs', methods=['GET'])
+@app.route('/api/logs', methods=['GET', 'DELETE'])
 def get_detection_logs():
-    """Get recent detection logs"""
+    """Get, paginate, and clear forensic logs."""
     try:
-        logs = []
-        log_file = "detection_logs.jsonl"
+        user = get_current_user()
+        if user:
+            firebase_service.upsert_user_profile(user)
 
-        if os.path.exists(log_file):
-            with open(log_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        logs.append(json.loads(line.strip()))
+        if request.method == "DELETE":
+            source_type = request.args.get("source_type")
+            deleted = clear_forensic_logs(user=user, source_type=source_type)
+            return jsonify({"status": "ok", "deleted": deleted})
 
-        # Return last 50 logs
-        return jsonify(logs[-50:])
+        page = request.args.get("page", 1)
+        page_size = request.args.get("page_size", 50)
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        source_type = request.args.get("source_type")
+
+        payload = get_forensic_logs_response(
+            user=user,
+            page=page,
+            page_size=page_size,
+            start_date=start_date,
+            end_date=end_date,
+            source_type=source_type,
+        )
+        return jsonify(payload)
 
     except Exception as e:
         logger.error(f"Error retrieving logs: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/logs/<log_id>', methods=['DELETE'])
+def delete_detection_log(log_id):
+    """Delete one forensic log entry by ID."""
+    try:
+        user = get_current_user()
+        deleted = delete_forensic_log(log_id, user=user)
+        if not deleted:
+            return jsonify({"error": "Log not found"}), 404
+        return jsonify({"status": "ok", "deleted_id": log_id})
+    except Exception as e:
+        logger.error(f"Error deleting log {log_id}: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/live-events', methods=['POST'])
+def create_live_event():
+    """Persist non-upload live monitoring events for future forensic review."""
+    try:
+        user = get_current_user()
+        payload = request.get_json(silent=True) or {}
+        session_id = payload.get("session_id") or str(uuid.uuid4())
+        source = payload.get("source") or "Live Monitoring"
+        event_name = payload.get("event_name") or "Live Event"
+        prediction = payload.get("prediction") or "Unknown"
+        confidence = payload.get("confidence")
+        latency_ms = payload.get("latency_ms", 0)
+
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "filename": source,
+            "prediction": prediction,
+            "confidence": confidence if isinstance(confidence, (int, float)) else 0,
+            "threat_level": payload.get("threat_level", "low"),
+            "model_used": payload.get("model_used", "Verifixia AI Live Monitor"),
+            "model_version": payload.get("model_version", "Live Monitor"),
+            "processing_time_ms": latency_ms,
+            "latency_ms": latency_ms,
+            "session_id": session_id,
+            "source_type": "live",
+            "event_name": event_name,
+            "message": payload.get("message"),
+        }
+        saved = save_forensic_log(log_entry, user)
+        return jsonify({"status": "ok", "event": saved}), 201
+    except Exception as e:
+        logger.error(f"Error saving live event: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/uploads/<path:filename>', methods=['GET'])
@@ -350,7 +591,8 @@ def health_check():
         'pytorch_available': PYTORCH_AVAILABLE,
         'model_loaded': model is not None,
         'device': device_info,
-        'model_info': model_info if model_info else None
+        'model_info': model_info if model_info else None,
+        'firebase_enabled': firebase_service.enabled
     })
 
 @app.route('/api/model-info', methods=['GET'])
@@ -368,16 +610,58 @@ def get_model_info():
             'pytorch_available': PYTORCH_AVAILABLE
         })
 
+
+@app.route('/api/auth/profile', methods=['GET', 'PUT'])
+def auth_profile():
+    """Get or update authenticated user profile (Firebase-backed)."""
+    if not firebase_service.enabled:
+        return jsonify({
+            "error": "Firebase is not configured on backend",
+            "firebase_enabled": False
+        }), 503
+
+    user = get_current_user()
+    if not user or not user.get("uid"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.method == "PUT":
+        payload = request.get_json(silent=True) or {}
+        allowed = {
+            "display_name": payload.get("display_name"),
+            "role": payload.get("role"),
+            "phone": payload.get("phone"),
+            "organization": payload.get("organization"),
+        }
+        # Drop null values to avoid clobbering existing data unintentionally
+        update_payload = {k: v for k, v in allowed.items() if v is not None}
+        firebase_service.upsert_user_profile(user, update_payload)
+        return jsonify({"status": "updated"})
+
+    profile = firebase_service.get_user_profile(user.get("uid")) or {}
+    if not profile:
+        firebase_service.upsert_user_profile(user)
+        profile = firebase_service.get_user_profile(user.get("uid")) or {}
+
+    return jsonify({
+        "status": "ok",
+        "profile": profile,
+        "auth_user": user
+    })
+
 @app.route('/', methods=['GET'])
 def index():
     """Root endpoint"""
     return jsonify({
-        'message': 'DeepGaurd AI Backend API',
+        'message': 'Verifixia AI Backend API',
         'version': '1.0.0',
         'endpoints': {
             'POST /api/upload': 'Upload image for deepfake detection',
-            'GET /api/logs': 'Get detection logs',
-            'GET /api/health': 'Health check'
+            'GET /api/logs': 'Get forensic logs (supports pagination/date/source filters)',
+            'DELETE /api/logs': 'Clear forensic logs (optional source_type filter)',
+            'DELETE /api/logs/<log_id>': 'Delete one forensic log by id',
+            'POST /api/live-events': 'Save non-upload live monitoring events',
+            'GET /api/health': 'Health check',
+            'GET/PUT /api/auth/profile': 'Authenticated user profile'
         }
     })
 
