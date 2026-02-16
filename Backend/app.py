@@ -11,6 +11,7 @@ from PIL import Image, ImageStat
 import random
 import time
 from firebase_service import FirebaseService
+from neon_db import db
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +40,14 @@ LOG_FILE = os.path.join(os.path.dirname(__file__), "detection_logs.jsonl")
 
 # Firebase integration (optional; configured via environment variables)
 firebase_service = FirebaseService()
+
+# Initialize Neon Database
+try:
+    db.create_tables()
+    logger.info("✓ Neon Database tables initialized successfully")
+except Exception as e:
+    logger.warning(f"⚠ Could not initialize Neon Database: {e}")
+    logger.warning("Database logging will be unavailable")
 
 # Model configuration
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "xception_deepfake.pth")
@@ -461,6 +470,24 @@ def upload_image():
         }
         saved_log = save_forensic_log(log_entry, user)
 
+        # Save detection to Neon Database
+        try:
+            user_id = None
+            if user:
+                # Try to get or create user in database
+                # For now, we'll use None as user_id
+                pass
+            
+            db_log = db.save_detection_log(
+                filename=unique_filename,
+                prediction=result.get("prediction"),
+                confidence=result.get("confidence", 0) / 100.0 if result.get("confidence", 0) > 1 else result.get("confidence", 0),
+                user_id=user_id
+            )
+            logger.info(f"✓ Detection saved to Neon Database: {db_log}")
+        except Exception as e:
+            logger.warning(f"⚠ Could not save to Neon Database: {e}")
+
         # Clean up uploaded file (optional - you might want to keep for forensic analysis)
         # os.remove(filepath)
 
@@ -660,10 +687,38 @@ def index():
             'DELETE /api/logs': 'Clear forensic logs (optional source_type filter)',
             'DELETE /api/logs/<log_id>': 'Delete one forensic log by id',
             'POST /api/live-events': 'Save non-upload live monitoring events',
+            'GET /api/database/logs': 'Get detection logs from Neon Database',
             'GET /api/health': 'Health check',
             'GET/PUT /api/auth/profile': 'Authenticated user profile'
         }
     })
+
+@app.route('/api/database/logs', methods=['GET'])
+def get_database_logs():
+    """Retrieve detection logs from Neon Database with pagination"""
+    try:
+        limit = request.args.get("limit", 50, type=int)
+        offset = request.args.get("offset", 0, type=int)
+        
+        # Validate pagination parameters
+        limit = min(limit, 500)  # Max 500 per request
+        offset = max(offset, 0)
+        
+        logs = db.get_detection_logs(limit=limit, offset=offset)
+        
+        return jsonify({
+            "status": "success",
+            "count": len(logs),
+            "limit": limit,
+            "offset": offset,
+            "logs": logs
+        })
+    except Exception as e:
+        logger.error(f"Error retrieving database logs: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Failed to retrieve detection logs"
+        }), 500
 
 if __name__ == '__main__':
     # Load model on startup: handled by module level pipeline init
