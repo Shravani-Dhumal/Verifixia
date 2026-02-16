@@ -12,6 +12,6 @@ Pillow==12.1.0
 # transformers is optional but useful for some pipelines; install if needed:
 transformers
 firebase-admin==7.1.0
-
+psycopg2-binary==2.9.9
 # torch
 # torchvision
