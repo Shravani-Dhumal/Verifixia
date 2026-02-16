@@ -1,7 +1,7 @@
 [build]
+  base = "Frontend"
   command = "npm run build"
-  functions = "netlify/functions"
-  publish = "dist"
+  publish = "Frontend/dist"
 
 [[redirects]]
   from = "/*"
@@ -14,15 +14,7 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     X-XSS-Protection = "1; mode=block"
+    Cache-Control = "public, max-age=3600"
 
-# Environment variables for Neon Database
-# Set these in Netlify Dashboard: Site Settings → Build & Deploy → Environment
 [build.environment]
   NODE_VERSION = "18"
-  PYTHON_VERSION = "3.11"
-
-# Redirects for API calls (if deploying backend to Netlify Functions)
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api:splat"
-  status = 200
